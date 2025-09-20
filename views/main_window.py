@@ -29,6 +29,9 @@ class MainWindow:
         self.original_image = None
         self.processed_image = None
         self.display_image = None
+        self.zoom_image = None
+        self.channels_image = None
+        self.histograms_image = None
         
         # Параметры обработки
         self.params = {
@@ -86,7 +89,7 @@ class MainWindow:
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Вид", menu=view_menu)
         view_menu.add_command(label="Сбросить параметры", command=self._reset_parameters)
-        view_menu.add_command(label="Показать OpenCV окна", command=self._show_opencv_windows)
+        view_menu.add_command(label="Дополнительные окна", command=self._show_additional_windows)
     
     def _create_left_panel(self, parent):
         """Создает левую панель с параметрами."""
@@ -226,6 +229,13 @@ class MainWindow:
         self.stats_info = tk.Text(stats_frame, height=4, width=25, wrap=tk.WORD)
         self.stats_info.pack(fill=tk.BOTH, expand=True)
         
+        # Zoom окно
+        zoom_frame = ttk.LabelFrame(right_frame, text="Zoom 11×11 x8", padding=5)
+        zoom_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.zoom_canvas = tk.Canvas(zoom_frame, bg="gray", width=88, height=88)
+        self.zoom_canvas.pack()
+        
         # Кнопки
         buttons_frame = ttk.Frame(right_frame)
         buttons_frame.pack(fill=tk.X, pady=(10, 0))
@@ -233,7 +243,7 @@ class MainWindow:
         ttk.Button(buttons_frame, text="Открыть", command=self._open_image).pack(fill=tk.X, pady=(0, 5))
         ttk.Button(buttons_frame, text="Сохранить", command=self._save_image).pack(fill=tk.X, pady=(0, 5))
         ttk.Button(buttons_frame, text="Сбросить", command=self._reset_parameters).pack(fill=tk.X, pady=(0, 5))
-        ttk.Button(buttons_frame, text="OpenCV окна", command=self._show_opencv_windows).pack(fill=tk.X)
+        ttk.Button(buttons_frame, text="Дополнительные окна", command=self._show_additional_windows).pack(fill=tk.X)
     
     def _create_status_bar(self):
         """Создает строку состояния."""
@@ -339,10 +349,10 @@ class MainWindow:
         if self.update_callback:
             self.update_callback()
     
-    def _show_opencv_windows(self):
-        """Показывает OpenCV окна."""
+    def _show_additional_windows(self):
+        """Показывает дополнительные окна с каналами и гистограммами."""
         if self.update_callback:
-            self.update_callback(show_opencv=True)
+            self.update_callback(show_additional=True)
     
     def set_update_callback(self, callback: Callable):
         """Устанавливает callback для обновления изображения."""
@@ -382,6 +392,27 @@ class MainWindow:
             canvas_width // 2, canvas_height // 2,
             image=self.display_image, anchor=tk.CENTER
         )
+    
+    def update_zoom_display(self, zoom_image: np.ndarray):
+        """Обновляет отображение zoom окна."""
+        if zoom_image is None:
+            return
+        
+        # Конвертируем BGR в RGB
+        rgb_image = cv2.cvtColor(zoom_image, cv2.COLOR_BGR2RGB)
+        
+        # Создаем PIL изображение
+        pil_image = Image.fromarray(rgb_image)
+        
+        # Масштабируем до размера canvas (88x88)
+        pil_image = pil_image.resize((88, 88), Image.Resampling.LANCZOS)
+        
+        # Конвертируем в PhotoImage
+        self.zoom_image = ImageTk.PhotoImage(pil_image)
+        
+        # Очищаем canvas и отображаем изображение
+        self.zoom_canvas.delete("all")
+        self.zoom_canvas.create_image(44, 44, image=self.zoom_image, anchor=tk.CENTER)
     
     def update_pixel_info(self, info: str):
         """Обновляет информацию о пикселе."""

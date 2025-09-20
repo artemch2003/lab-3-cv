@@ -13,7 +13,7 @@ from config.settings import *
 
 
 class ImageProcessor:
-    """
+    """`
     Класс для обработки изображений с различными эффектами.
     """
     
