@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image, ImageTk
 from typing import Optional, Callable
 from config.settings import GUI_SETTINGS
+from views.channel_viewer import ChannelViewer
 
 
 class ScrollableFrame(ttk.Frame):
@@ -83,6 +84,14 @@ class MainWindow:
         self.channels_display_image = None
         self.histograms_display_image = None
         
+        # Окно просмотра каналов
+        self.channel_viewer = None
+        
+        # Режим отображения каналов
+        self.channel_mode = False  # False - обычное изображение, True - каналы
+        self.current_channel = 0  # 0: Gray, 1: Red, 2: Green, 3: Blue
+        self.channel_images = {}  # Словарь для хранения каналов
+        
         # Параметры обработки
         self.params = {
             "brightness": tk.IntVar(value=100),
@@ -140,6 +149,8 @@ class MainWindow:
         menubar.add_cascade(label="Вид", menu=view_menu)
         view_menu.add_command(label="Сбросить параметры", command=self._reset_parameters)
         view_menu.add_command(label="Дополнительные окна", command=self._show_additional_windows)
+        view_menu.add_separator()
+        view_menu.add_command(label="Просмотр каналов", command=self._show_channel_viewer)
     
     def _create_left_panel(self, parent):
         """Создает левую панель с параметрами."""
@@ -238,7 +249,23 @@ class MainWindow:
             left_frame, text="Вертикальное", variable=self.params["flip_vertical"],
             command=self._on_parameter_change
         )
-        flip_v_check.pack(anchor=tk.W)
+        flip_v_check.pack(anchor=tk.W, pady=(0, 10))
+        
+        # Режим каналов
+        ttk.Label(left_frame, text="Режим просмотра:").pack(anchor=tk.W)
+        
+        self.channel_mode_var = tk.BooleanVar(value=False)
+        channel_mode_check = ttk.Checkbutton(
+            left_frame, text="Просмотр каналов", variable=self.channel_mode_var,
+            command=self._toggle_channel_mode
+        )
+        channel_mode_check.pack(anchor=tk.W)
+        
+        # Информация о текущем канале
+        self.channel_info_label = ttk.Label(
+            left_frame, text="Серый канал", font=("Arial", 10, "bold")
+        )
+        self.channel_info_label.pack(anchor=tk.W, pady=(5, 0))
     
     def _create_center_panel(self, parent):
         """Создает центральную панель с изображением."""
@@ -314,7 +341,8 @@ class MainWindow:
         ttk.Button(buttons_frame, text="Открыть", command=self._open_image).pack(fill=tk.X, pady=(0, 5))
         ttk.Button(buttons_frame, text="Сохранить", command=self._save_image).pack(fill=tk.X, pady=(0, 5))
         ttk.Button(buttons_frame, text="Сбросить", command=self._reset_parameters).pack(fill=tk.X, pady=(0, 5))
-        ttk.Button(buttons_frame, text="Обновить дополнительные окна", command=self._update_additional_windows).pack(fill=tk.X)
+        ttk.Button(buttons_frame, text="Обновить дополнительные окна", command=self._update_additional_windows).pack(fill=tk.X, pady=(0, 5))
+        ttk.Button(buttons_frame, text="Просмотр каналов", command=self._show_channel_viewer).pack(fill=tk.X)
     
     def _create_status_bar(self):
         """Создает строку состояния."""
@@ -329,6 +357,17 @@ class MainWindow:
         self.root.bind("<Control-s>", lambda e: self._save_image())
         self.root.bind("<F5>", lambda e: self._reset_parameters())
         self.root.bind("<Escape>", lambda e: self.root.quit())
+        
+        # Горячие клавиши для переключения каналов
+        self.root.bind("<space>", lambda e: self._next_channel() if self.channel_mode else None)
+        self.root.bind("<Right>", lambda e: self._next_channel() if self.channel_mode else None)
+        self.root.bind("<Left>", lambda e: self._previous_channel() if self.channel_mode else None)
+        
+        # Цифровые клавиши для быстрого переключения каналов
+        self.root.bind("<Key-1>", lambda e: self._switch_to_channel(0) if self.channel_mode else None)
+        self.root.bind("<Key-2>", lambda e: self._switch_to_channel(1) if self.channel_mode else None)
+        self.root.bind("<Key-3>", lambda e: self._switch_to_channel(2) if self.channel_mode else None)
+        self.root.bind("<Key-4>", lambda e: self._switch_to_channel(3) if self.channel_mode else None)
     
     def _on_parameter_change(self, event=None):
         """Обработчик изменения параметров."""
@@ -362,7 +401,12 @@ class MainWindow:
     
     def _on_mouse_click(self, event):
         """Обработчик клика мыши."""
-        self._on_mouse_move(event)
+        # Если включен режим каналов, переключаем канал
+        if self.channel_mode:
+            self._next_channel()
+        else:
+            # Обычное поведение - обновляем позицию мыши
+            self._on_mouse_move(event)
     
     def _open_image(self):
         """Открывает диалог выбора изображения."""
@@ -430,6 +474,115 @@ class MainWindow:
         if self.update_callback:
             self.update_callback(update_additional=True)
     
+    def _show_channel_viewer(self):
+        """Показывает окно просмотра каналов."""
+        if self.processed_image is None:
+            messagebox.showwarning("Предупреждение", "Сначала загрузите изображение")
+            return
+        
+        # Создаем окно просмотра каналов если его еще нет
+        if self.channel_viewer is None:
+            self.channel_viewer = ChannelViewer(self.root)
+        
+        # Загружаем изображение в окно просмотра
+        self.channel_viewer.load_image(self.processed_image)
+        
+        # Показываем окно
+        self.channel_viewer.show()
+    
+    def _toggle_channel_mode(self):
+        """Переключает режим просмотра каналов."""
+        self.channel_mode = self.channel_mode_var.get()
+        
+        if self.channel_mode and self.processed_image is not None:
+            # Создаем каналы из текущего изображения
+            self._create_channels(self.processed_image)
+            self._update_channel_display()
+        elif not self.channel_mode:
+            # Возвращаемся к обычному отображению
+            if self.update_callback:
+                self.update_callback()
+    
+    def _create_channels(self, bgr_image: np.ndarray):
+        """
+        Создает каналы из BGR изображения.
+        
+        Args:
+            bgr_image: Изображение в формате BGR
+        """
+        # Разделяем на каналы
+        blue_channel, green_channel, red_channel = cv2.split(bgr_image)
+        
+        # Создаем серый канал
+        gray_channel = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
+        
+        # Сохраняем каналы
+        self.channel_images = {
+            "gray": gray_channel,
+            "red": red_channel,
+            "green": green_channel,
+            "blue": blue_channel
+        }
+    
+    def _next_channel(self):
+        """Переключает на следующий канал."""
+        if not self.channel_mode or not self.channel_images:
+            return
+        
+        self.current_channel = (self.current_channel + 1) % 4
+        self._update_channel_display()
+    
+    def _update_channel_display(self):
+        """Обновляет отображение текущего канала."""
+        if not self.channel_mode or not self.channel_images:
+            return
+        
+        # Получаем названия каналов
+        channel_names = ["Серый", "Красный", "Зеленый", "Синий"]
+        channel_keys = ["gray", "red", "green", "blue"]
+        
+        # Обновляем информацию о канале
+        self.channel_info_label.config(text=f"{channel_names[self.current_channel]} канал")
+        
+        # Получаем текущий канал
+        current_key = channel_keys[self.current_channel]
+        if current_key not in self.channel_images:
+            return
+        
+        channel_image = self.channel_images[current_key]
+        
+        # Конвертируем в PIL Image
+        if len(channel_image.shape) == 2:
+            # Серый канал
+            pil_image = Image.fromarray(channel_image, mode='L')
+        else:
+            # Цветной канал
+            pil_image = Image.fromarray(channel_image)
+        
+        # Масштабируем изображение для отображения
+        canvas_width = self.image_canvas.winfo_width()
+        canvas_height = self.image_canvas.winfo_height()
+        
+        if canvas_width > 1 and canvas_height > 1:
+            # Вычисляем масштаб с сохранением пропорций
+            img_width, img_height = pil_image.size
+            scale = min(canvas_width / img_width, canvas_height / img_height)
+            
+            new_width = int(img_width * scale)
+            new_height = int(img_height * scale)
+            
+            pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        # Конвертируем в PhotoImage
+        self.display_image = ImageTk.PhotoImage(pil_image)
+        
+        # Очищаем canvas и отображаем изображение
+        self.image_canvas.delete("all")
+        self.image_canvas.create_image(
+            canvas_width // 2, canvas_height // 2,
+            image=self.display_image, anchor=tk.CENTER
+        )
+    
     def set_update_callback(self, callback: Callable):
         """Устанавливает callback для обновления изображения."""
         self.update_callback = callback
@@ -439,6 +592,13 @@ class MainWindow:
         if image is None:
             return
         
+        # Если включен режим каналов, обновляем каналы и отображаем текущий
+        if self.channel_mode:
+            self._create_channels(image)
+            self._update_channel_display()
+            return
+        
+        # Обычное отображение изображения
         # Конвертируем BGR в RGB
         rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
@@ -549,6 +709,28 @@ class MainWindow:
     def get_parameters(self) -> dict:
         """Возвращает текущие параметры."""
         return {name: var.get() for name, var in self.params.items()}
+    
+    def _previous_channel(self):
+        """Переключает на предыдущий канал."""
+        if not self.channel_mode or not self.channel_images:
+            return
+        
+        self.current_channel = (self.current_channel - 1) % 4
+        self._update_channel_display()
+    
+    def _switch_to_channel(self, channel_index: int):
+        """
+        Переключает на указанный канал.
+        
+        Args:
+            channel_index: Индекс канала (0: Gray, 1: Red, 2: Green, 3: Blue)
+        """
+        if not self.channel_mode or not self.channel_images:
+            return
+        
+        if 0 <= channel_index <= 3:
+            self.current_channel = channel_index
+            self._update_channel_display()
     
     def run(self):
         """Запускает главный цикл приложения."""

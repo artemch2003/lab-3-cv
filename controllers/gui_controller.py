@@ -112,6 +112,9 @@ class GUIController:
         
         # Обновляем дополнительные окна в правой панели
         self._update_additional_windows()
+        
+        # Обновляем окно просмотра каналов если оно открыто
+        self._update_channel_viewer()
     
     def _update_pixel_info(self, image: np.ndarray):
         """
@@ -194,6 +197,12 @@ class GUIController:
         self.main_window.update_channels_display(channels_mosaic)
         self.main_window.update_histograms_display(histograms_image)
     
+    def _update_channel_viewer(self):
+        """Обновляет окно просмотра каналов если оно открыто."""
+        if (self.main_window.channel_viewer is not None and 
+            self.main_window.channel_viewer.is_visible() and 
+            self.processor.processed_image is not None):
+            self.main_window.channel_viewer.load_image(self.processor.processed_image)
     
     def run(self):
         """Запускает приложение."""
