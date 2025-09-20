@@ -13,6 +13,52 @@ from typing import Optional, Callable
 from config.settings import GUI_SETTINGS
 
 
+class ScrollableFrame(ttk.Frame):
+    """Прокручиваемая рамка с полосой прокрутки."""
+    
+    def __init__(self, parent, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        
+        # Создаем canvas и scrollbar
+        self.canvas = tk.Canvas(self, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas)
+        
+        # Настраиваем прокрутку
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        
+        # Размещаем элементы
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+        
+        # Привязываем события мыши для прокрутки
+        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind("<Button-4>", self._on_mousewheel)
+        self.canvas.bind("<Button-5>", self._on_mousewheel)
+        
+        # Фокус для работы с клавиатурой
+        self.canvas.bind("<1>", lambda event: self.canvas.focus_set())
+    
+    def _on_mousewheel(self, event):
+        """Обработчик прокрутки колесом мыши."""
+        if event.delta:
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        elif event.num == 4:
+            self.canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            self.canvas.yview_scroll(1, "units")
+    
+    def get_scrollable_frame(self):
+        """Возвращает прокручиваемую рамку для размещения виджетов."""
+        return self.scrollable_frame
+
+
 class MainWindow:
     """
     Главное окно приложения с современным интерфейсом.
@@ -32,6 +78,10 @@ class MainWindow:
         self.zoom_image = None
         self.channels_image = None
         self.histograms_image = None
+        
+        # Переменные для дополнительных изображений в правой панели
+        self.channels_display_image = None
+        self.histograms_display_image = None
         
         # Параметры обработки
         self.params = {
@@ -211,39 +261,60 @@ class MainWindow:
         self.image_canvas.bind("<Button-1>", self._on_mouse_click)
     
     def _create_right_panel(self, parent):
-        """Создает правую панель с информацией."""
-        right_frame = ttk.LabelFrame(parent, text="Информация", padding=10)
+        """Создает правую панель с информацией и дополнительными окнами."""
+        right_frame = ttk.LabelFrame(parent, text="Информация и дополнительные окна", padding=5)
         right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(10, 0))
         
+        # Создаем прокручиваемую область
+        scrollable_area = ScrollableFrame(right_frame)
+        scrollable_area.pack(fill=tk.BOTH, expand=True)
+        
+        # Получаем прокручиваемую рамку для размещения виджетов
+        content_frame = scrollable_area.get_scrollable_frame()
+        
         # Информация о пикселе
-        pixel_frame = ttk.LabelFrame(right_frame, text="Информация о пикселе", padding=5)
+        pixel_frame = ttk.LabelFrame(content_frame, text="Информация о пикселе", padding=5)
         pixel_frame.pack(fill=tk.X, pady=(0, 10))
         
-        self.pixel_info = tk.Text(pixel_frame, height=6, width=25, wrap=tk.WORD)
+        self.pixel_info = tk.Text(pixel_frame, height=6, width=30, wrap=tk.WORD)
         self.pixel_info.pack(fill=tk.BOTH, expand=True)
         
         # Статистики окна
-        stats_frame = ttk.LabelFrame(right_frame, text="Статистики окна 11×11", padding=5)
+        stats_frame = ttk.LabelFrame(content_frame, text="Статистики окна 11×11", padding=5)
         stats_frame.pack(fill=tk.X, pady=(0, 10))
         
-        self.stats_info = tk.Text(stats_frame, height=4, width=25, wrap=tk.WORD)
+        self.stats_info = tk.Text(stats_frame, height=4, width=30, wrap=tk.WORD)
         self.stats_info.pack(fill=tk.BOTH, expand=True)
         
         # Zoom окно
-        zoom_frame = ttk.LabelFrame(right_frame, text="Zoom 11×11 x8", padding=5)
+        zoom_frame = ttk.LabelFrame(content_frame, text="Zoom 11×11 x8", padding=5)
         zoom_frame.pack(fill=tk.X, pady=(0, 10))
         
         self.zoom_canvas = tk.Canvas(zoom_frame, bg="gray", width=88, height=88)
         self.zoom_canvas.pack()
         
+        # Каналы изображения
+        channels_frame = ttk.LabelFrame(content_frame, text="Каналы изображения", padding=5)
+        channels_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.channels_canvas = tk.Canvas(channels_frame, bg="gray", width=300, height=200)
+        self.channels_canvas.pack()
+        
+        # Гистограммы
+        histograms_frame = ttk.LabelFrame(content_frame, text="Гистограммы", padding=5)
+        histograms_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.histograms_canvas = tk.Canvas(histograms_frame, bg="gray", width=300, height=200)
+        self.histograms_canvas.pack()
+        
         # Кнопки
-        buttons_frame = ttk.Frame(right_frame)
+        buttons_frame = ttk.Frame(content_frame)
         buttons_frame.pack(fill=tk.X, pady=(10, 0))
         
         ttk.Button(buttons_frame, text="Открыть", command=self._open_image).pack(fill=tk.X, pady=(0, 5))
         ttk.Button(buttons_frame, text="Сохранить", command=self._save_image).pack(fill=tk.X, pady=(0, 5))
         ttk.Button(buttons_frame, text="Сбросить", command=self._reset_parameters).pack(fill=tk.X, pady=(0, 5))
-        ttk.Button(buttons_frame, text="Дополнительные окна", command=self._show_additional_windows).pack(fill=tk.X)
+        ttk.Button(buttons_frame, text="Обновить дополнительные окна", command=self._update_additional_windows).pack(fill=tk.X)
     
     def _create_status_bar(self):
         """Создает строку состояния."""
@@ -354,6 +425,11 @@ class MainWindow:
         if self.update_callback:
             self.update_callback(show_additional=True)
     
+    def _update_additional_windows(self):
+        """Обновляет дополнительные окна в правой панели."""
+        if self.update_callback:
+            self.update_callback(update_additional=True)
+    
     def set_update_callback(self, callback: Callable):
         """Устанавливает callback для обновления изображения."""
         self.update_callback = callback
@@ -423,6 +499,48 @@ class MainWindow:
         """Обновляет статистическую информацию."""
         self.stats_info.delete(1.0, tk.END)
         self.stats_info.insert(1.0, info)
+    
+    def update_channels_display(self, channels_image: np.ndarray):
+        """Обновляет отображение каналов в правой панели."""
+        if channels_image is None:
+            return
+        
+        # Конвертируем BGR в RGB
+        rgb_image = cv2.cvtColor(channels_image, cv2.COLOR_BGR2RGB)
+        
+        # Создаем PIL изображение
+        pil_image = Image.fromarray(rgb_image)
+        
+        # Масштабируем изображение для отображения (300x200)
+        pil_image = pil_image.resize((300, 200), Image.Resampling.LANCZOS)
+        
+        # Конвертируем в PhotoImage
+        self.channels_display_image = ImageTk.PhotoImage(pil_image)
+        
+        # Очищаем canvas и отображаем изображение
+        self.channels_canvas.delete("all")
+        self.channels_canvas.create_image(150, 100, image=self.channels_display_image, anchor=tk.CENTER)
+    
+    def update_histograms_display(self, histograms_image: np.ndarray):
+        """Обновляет отображение гистограмм в правой панели."""
+        if histograms_image is None:
+            return
+        
+        # Конвертируем BGR в RGB
+        rgb_image = cv2.cvtColor(histograms_image, cv2.COLOR_BGR2RGB)
+        
+        # Создаем PIL изображение
+        pil_image = Image.fromarray(rgb_image)
+        
+        # Масштабируем изображение для отображения (300x200)
+        pil_image = pil_image.resize((300, 200), Image.Resampling.LANCZOS)
+        
+        # Конвертируем в PhotoImage
+        self.histograms_display_image = ImageTk.PhotoImage(pil_image)
+        
+        # Очищаем canvas и отображаем изображение
+        self.histograms_canvas.delete("all")
+        self.histograms_canvas.create_image(150, 100, image=self.histograms_display_image, anchor=tk.CENTER)
     
     def update_status(self, message: str):
         """Обновляет строку состояния."""

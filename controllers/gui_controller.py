@@ -36,7 +36,7 @@ class GUIController:
         
         Args:
             *args: Аргументы (может быть путь к файлу)
-            **kwargs: Ключевые аргументы (может быть show_opencv)
+            **kwargs: Ключевые аргументы (может быть show_additional, update_additional)
         """
         # Проверяем, нужно ли загрузить новое изображение
         if args and isinstance(args[0], str):
@@ -46,6 +46,11 @@ class GUIController:
         # Проверяем, нужно ли показать дополнительные окна
         if kwargs.get('show_additional', False):
             self._show_additional_windows()
+            return
+        
+        # Проверяем, нужно ли обновить дополнительные окна
+        if kwargs.get('update_additional', False):
+            self._update_additional_windows()
             return
         
         # Обычное обновление
@@ -104,6 +109,9 @@ class GUIController:
         
         # Обновляем информацию о пикселе
         self._update_pixel_info(processed_image)
+        
+        # Обновляем дополнительные окна в правой панели
+        self._update_additional_windows()
     
     def _update_pixel_info(self, image: np.ndarray):
         """
@@ -168,57 +176,24 @@ class GUIController:
             self.main_window.update_status("Сначала загрузите изображение")
             return
         
+        # Обновляем дополнительные окна в правой панели
+        self._update_additional_windows()
+        self.main_window.update_status("Дополнительные окна обновлены")
+    
+    def _update_additional_windows(self):
+        """Обновляет дополнительные окна в правой панели."""
+        if self.processor.original_image is None:
+            return
+        
         # Создаем окна с каналами и гистограммами
         processed_image = self.processor.process_image()
         channels_mosaic = self.analyzer.create_mosaic_channels(processed_image)
         histograms_image = self.analyzer.make_histogram_image(processed_image)
         
-        # Создаем отдельные окна для отображения
-        self._create_additional_windows(channels_mosaic, histograms_image)
-        
-        self.main_window.update_status("Дополнительные окна открыты")
+        # Обновляем отображение в правой панели
+        self.main_window.update_channels_display(channels_mosaic)
+        self.main_window.update_histograms_display(histograms_image)
     
-    def _create_additional_windows(self, channels_image: np.ndarray, histograms_image: np.ndarray):
-        """
-        Создает дополнительные окна для отображения каналов и гистограмм.
-        
-        Args:
-            channels_image: Изображение с каналами
-            histograms_image: Изображение с гистограммами
-        """
-        import tkinter as tk
-        from tkinter import ttk
-        from PIL import Image, ImageTk
-        
-        # Создаем окно для каналов
-        channels_window = tk.Toplevel(self.main_window.root)
-        channels_window.title("Каналы")
-        channels_window.geometry("800x600")
-        
-        # Конвертируем изображение каналов
-        channels_rgb = cv2.cvtColor(channels_image, cv2.COLOR_BGR2RGB)
-        channels_pil = Image.fromarray(channels_rgb)
-        channels_photo = ImageTk.PhotoImage(channels_pil)
-        
-        channels_canvas = tk.Canvas(channels_window, width=800, height=600)
-        channels_canvas.pack(fill=tk.BOTH, expand=True)
-        channels_canvas.create_image(400, 300, image=channels_photo, anchor=tk.CENTER)
-        channels_canvas.image = channels_photo  # Сохраняем ссылку
-        
-        # Создаем окно для гистограмм
-        histograms_window = tk.Toplevel(self.main_window.root)
-        histograms_window.title("Гистограммы")
-        histograms_window.geometry("600x400")
-        
-        # Конвертируем изображение гистограмм
-        histograms_rgb = cv2.cvtColor(histograms_image, cv2.COLOR_BGR2RGB)
-        histograms_pil = Image.fromarray(histograms_rgb)
-        histograms_photo = ImageTk.PhotoImage(histograms_pil)
-        
-        histograms_canvas = tk.Canvas(histograms_window, width=600, height=400)
-        histograms_canvas.pack(fill=tk.BOTH, expand=True)
-        histograms_canvas.create_image(300, 200, image=histograms_photo, anchor=tk.CENTER)
-        histograms_canvas.image = histograms_photo  # Сохраняем ссылку
     
     def run(self):
         """Запускает приложение."""
