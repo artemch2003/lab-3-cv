@@ -25,7 +25,7 @@
 
 ```bash
 # Клонируйте репозиторий
-git clone <repository-url>
+git clone https://github.com/artemch2003/cv-lab-1
 cd lab-1-cv
 
 # Установите зависимости
