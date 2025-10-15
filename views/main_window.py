@@ -5,7 +5,7 @@
 """
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, scrolledtext
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
@@ -111,6 +111,13 @@ class MainWindow:
             "hp_blur_mode": tk.IntVar(value=0),  # 0 mean, 1 gaussian
             "hp_kernel": tk.IntVar(value=3),
             "hp_scale_x100": tk.IntVar(value=100),
+            # Convolution
+            "conv_enable": tk.BooleanVar(value=False),
+            "conv_normalize": tk.BooleanVar(value=True),
+            "conv_add128": tk.BooleanVar(value=False),
+            "conv_kernel_size": tk.IntVar(value=3),
+            "conv_kernel_text": tk.StringVar(value=""),
+            "conv_preset": tk.StringVar(value="Пользовательская"),
         }
         
         # Позиция мыши
@@ -292,6 +299,68 @@ class MainWindow:
             variable=self.params["hp_scale_x100"], command=self._on_parameter_change
         )
         hp_scale.pack(fill=tk.X)
+
+        # Свёртка (конволюция)
+        conv_frame = ttk.LabelFrame(left_frame, text="Свёртка (конволюция)", padding=8)
+        conv_frame.pack(fill=tk.X, pady=(0, 10))
+
+        conv_enable_check = ttk.Checkbutton(
+            conv_frame, text="Включить свёртку", variable=self.params["conv_enable"],
+            command=self._on_parameter_change
+        )
+        conv_enable_check.pack(anchor=tk.W)
+
+        ttk.Label(conv_frame, text="Пресет ядра:").pack(anchor=tk.W)
+        conv_presets = [
+            "Пользовательская",
+            "Identity 3x3",
+            "Box 3x3",
+            "Gaussian 3x3",
+            "Sobel X",
+            "Sobel Y",
+            "Prewitt X",
+            "Prewitt Y",
+            "Laplacian 4",
+            "Laplacian 8",
+        ]
+        conv_preset_combo = ttk.Combobox(
+            conv_frame, state="readonly", width=18,
+            values=conv_presets, textvariable=self.params["conv_preset"]
+        )
+        conv_preset_combo.pack(fill=tk.X, pady=(0, 6))
+        conv_preset_combo.bind("<<ComboboxSelected>>", self._on_parameter_change)
+
+        ttk.Label(conv_frame, text="Размер ядра (n×n, нечетн.):").pack(anchor=tk.W)
+        conv_kernel_scale = ttk.Scale(
+            conv_frame, from_=1, to=25, orient=tk.HORIZONTAL,
+            variable=self.params["conv_kernel_size"], command=self._on_parameter_change
+        )
+        conv_kernel_scale.pack(fill=tk.X, pady=(0, 6))
+
+        conv_norm_check = ttk.Checkbutton(
+            conv_frame, text="Нормализация (делить на сумму ядра)",
+            variable=self.params["conv_normalize"], command=self._on_parameter_change
+        )
+        conv_norm_check.pack(anchor=tk.W)
+
+        conv_add128_check = ttk.Checkbutton(
+            conv_frame, text="+128 после свёртки",
+            variable=self.params["conv_add128"], command=self._on_parameter_change
+        )
+        conv_add128_check.pack(anchor=tk.W)
+
+        ttk.Label(conv_frame, text="Матрица ядра (через пробел/запятую/перенос строки):").pack(anchor=tk.W, pady=(6, 0))
+        self.conv_kernel_text_widget = scrolledtext.ScrolledText(conv_frame, height=6, wrap=tk.WORD)
+        self.conv_kernel_text_widget.pack(fill=tk.BOTH, expand=False)
+        # Инициализируем содержимое из переменной
+        self.conv_kernel_text_widget.insert("1.0", self.params["conv_kernel_text"].get())
+
+        def _on_conv_text_change(event=None):
+            # Синхронизация содержимого Text -> StringVar и триггер перерасчёта
+            self.params["conv_kernel_text"].set(self.conv_kernel_text_widget.get("1.0", tk.END))
+            self._on_parameter_change()
+
+        self.conv_kernel_text_widget.bind("<KeyRelease>", _on_conv_text_change)
         
         # Режим каналов
         ttk.Label(left_frame, text="Режим просмотра:").pack(anchor=tk.W)
@@ -507,6 +576,13 @@ class MainWindow:
         self.params["hp_blur_mode"].set(0)
         self.params["hp_kernel"].set(3)
         self.params["hp_scale_x100"].set(100)
+        # Convolution
+        self.params["conv_enable"].set(False)
+        self.params["conv_normalize"].set(True)
+        self.params["conv_add128"].set(False)
+        self.params["conv_kernel_size"].set(3)
+        self.params["conv_kernel_text"].set("")
+        self.params["conv_preset"].set("Пользовательская")
         
         if self.update_callback:
             self.update_callback()

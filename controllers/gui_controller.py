@@ -101,6 +101,17 @@ class GUIController:
         self.processor.set_parameter("hp_blur_mode", ui_params.get("hp_blur_mode", 0))
         self.processor.set_parameter("hp_kernel", int(ui_params.get("hp_kernel", 3)))
         self.processor.set_parameter("hp_scale_x100", int(ui_params.get("hp_scale_x100", 100)))
+        # Convolution параметры
+        self.processor.set_parameter("conv_enable", ui_params.get("conv_enable", False))
+        self.processor.set_parameter("conv_normalize", ui_params.get("conv_normalize", True))
+        self.processor.set_parameter("conv_add128", ui_params.get("conv_add128", False))
+        # Приводим размер ядра к нечетному и диапазону
+        conv_k_raw = int(ui_params.get("conv_kernel_size", 3))
+        if conv_k_raw % 2 == 0:
+            conv_k_raw = max(1, conv_k_raw - 1)
+        self.processor.set_parameter("conv_kernel_size", max(1, min(25, conv_k_raw)))
+        self.processor.set_parameter("conv_kernel_text", ui_params.get("conv_kernel_text", ""))
+        self.processor.set_parameter("conv_preset", ui_params.get("conv_preset", "Пользовательская"))
         
         # Обрабатываем изображение
         processed_image = self.processor.process_image()

@@ -42,6 +42,13 @@ class ImageProcessor:
             "hp_blur_mode": 0,      # 0=mean, 1=gaussian
             "hp_kernel": 3,         # нечетный размер ядра (3..25)
             "hp_scale_x100": 100,   # c в формуле, х100 (0..300)
+            # Свёртка
+            "conv_enable": False,           # включение свёртки
+            "conv_normalize": True,         # делить на сумму ядра
+            "conv_add128": False,           # прибавить 128 к результату
+            "conv_kernel_size": 3,          # n (нечётное)
+            "conv_kernel_text": "",        # текст ядра n×n через пробел/запятую/перевод строки
+            "conv_preset": "Пользовательская",  # название пресета
         }
     
     def load_image(self, path: str) -> bool:
@@ -154,6 +161,21 @@ class ImageProcessor:
                 kernel_size=int(self.params.get("hp_kernel", 3)),
                 scale=float(self.params.get("hp_scale_x100", 100)) / 100.0,
             )
+
+        # 7) Свёртка (опционально)
+        if self.params.get("conv_enable", False):
+            kernel = self._get_convolution_kernel(
+                preset=str(self.params.get("conv_preset", "Пользовательская")),
+                kernel_size=int(self.params.get("conv_kernel_size", 3)),
+                kernel_text=str(self.params.get("conv_kernel_text", "")),
+            )
+            if kernel is not None:
+                processed = self._apply_convolution(
+                    processed,
+                    kernel,
+                    normalize=bool(self.params.get("conv_normalize", True)),
+                    add128=bool(self.params.get("conv_add128", False)),
+                )
         
         self.processed_image = processed
         self.params_dirty = False
@@ -433,3 +455,107 @@ class ImageProcessor:
                     window = col[y:y + 2 * pad + 1]
                     out[y, x] = float(np.dot(window, kernel))
             return out
+
+    # ---- Свёртка NxN ----
+    def _get_convolution_kernel(self, preset: str, kernel_size: int, kernel_text: str) -> np.ndarray | None:
+        """Возвращает ядро свёртки из пресета или парсит пользовательское.
+
+        Правила:
+        - Если выбран пресет, игнорируем текст (кроме "Пользовательская").
+        - Размер ядра приводим к нечётному в диапазоне [1, 25].
+        - Парсер принимает числа через пробелы, запятые и переводы строк.
+        """
+        # Пресеты
+        presets = self._preset_kernels()
+        if preset in presets and preset != "Пользовательская":
+            return presets[preset].astype(np.float32)
+
+        # Пользовательское ядро
+        k = max(1, int(kernel_size))
+        if k % 2 == 0:
+            k += 1
+        k = min(k, 25)
+
+        values = self._parse_kernel_text(kernel_text)
+        if values is None or len(values) == 0:
+            return None
+
+        # Если размер не задан явно, пытаемся вывести из количества значений
+        n_vals = len(values)
+        n = int(round(math.sqrt(n_vals)))
+        if n * n == n_vals:
+            k = n
+
+        if k * k != n_vals:
+            return None
+
+        kernel = np.array(values, dtype=np.float32).reshape((k, k))
+        return kernel
+
+    def _parse_kernel_text(self, text: str):
+        """Парсит текст ядра в список чисел (float). Допускает разделители: пробел, запятая, перевод строки, точка с запятой."""
+        if text is None:
+            return None
+        raw = text.replace("\n", " ").replace(",", " ").replace(";", " ")
+        tokens = [t for t in raw.split() if len(t) > 0]
+        values = []
+        for tok in tokens:
+            try:
+                values.append(float(tok))
+            except Exception:
+                return None
+        return values
+
+    def _preset_kernels(self) -> Dict[str, np.ndarray]:
+        """Набор стандартных ядер свёртки."""
+        return {
+            "Пользовательская": np.array([[0]], dtype=np.float32),
+            "Identity 3x3": np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float32),
+            "Box 3x3": np.ones((3, 3), dtype=np.float32),
+            "Gaussian 3x3": np.array([[1, 2, 1], [2, 4, 2], [1, 2, 1]], dtype=np.float32),
+            "Sobel X": np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float32),
+            "Sobel Y": np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=np.float32),
+            "Prewitt X": np.array([[-1, 0, 1], [-1, 0, 1], [-1, 0, 1]], dtype=np.float32),
+            "Prewitt Y": np.array([[-1, -1, -1], [0, 0, 0], [1, 1, 1]], dtype=np.float32),
+            "Laplacian 4": np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float32),
+            "Laplacian 8": np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]], dtype=np.float32),
+        }
+
+    def _apply_convolution(self, bgr: np.ndarray, kernel: np.ndarray, normalize: bool, add128: bool) -> np.ndarray:
+        """Применяет свёртку ядром к каждому каналу BGR вручную.
+
+        Вычисления ведутся в float32. Паддинг: reflect. Нормализация: деление на сумму ядра (если сумма != 0).
+        Опция +128: после свёртки добавляется 128 к каждому значению.
+        """
+        k = np.array(kernel, dtype=np.float32)
+        # Нормализация ядра (деление на сумму) если требуется и сумма != 0
+        if normalize:
+            s = float(k.sum())
+            if abs(s) > 1e-12:
+                k = k / s
+
+        channels = cv2.split(bgr.astype(np.float32))
+        out_channels = [self._convolve_channel(ch, k, add128) for ch in channels]
+        out = cv2.merge(out_channels)
+        out = np.clip(out, MIN_PIXEL_VALUE, MAX_PIXEL_VALUE).astype(np.uint8)
+        return out
+
+    def _convolve_channel(self, ch: np.ndarray, kernel: np.ndarray, add128: bool) -> np.ndarray:
+        """Свёртка одного канала ch ядром kernel через окна и tensordot."""
+        kh, kw = kernel.shape
+        pad_y = kh // 2
+        pad_x = kw // 2
+        padded = np.pad(ch, ((pad_y, pad_y), (pad_x, pad_x)), mode='reflect')
+        h, w = ch.shape
+
+        # Используем представление всех окон через stride_tricks (без доп. памяти)
+        shape = (h, w, kh, kw)
+        strides = (padded.strides[0], padded.strides[1], padded.strides[0], padded.strides[1])
+        windows = np.lib.stride_tricks.as_strided(padded, shape=shape, strides=strides, writeable=False)
+
+        # Свёртка = корреляция с перевёрнутым ядром
+        kernel_flipped = kernel[::-1, ::-1]
+        result = np.tensordot(windows, kernel_flipped, axes=([2, 3], [0, 1]))
+        if add128:
+            result = result + 128.0
+        return result.astype(np.float32)
