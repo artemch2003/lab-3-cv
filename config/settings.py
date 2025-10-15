@@ -47,6 +47,18 @@ TRACKBAR_RANGES = {
     "HP_Mode": (0, 1),        # 0=mean, 1=gaussian
     "HP_Kernel": (3, 25),     # будем приводить к нечетному
     "HP_Scale_x100": (0, 300),
+    # Edges
+    "Edges_Enable": (0, 1),
+    "Edges_Method": (0, 1),  # 0=Sobel, 1=Prewitt
+    "Edges_Thresh": (0, 255),
+    "Edges_Overlay": (0, 1),
+    # Corners (Harris)
+    "Corners_Enable": (0, 1),
+    "Corners_K_x1000": (1, 100),  # 0.001..0.100
+    "Corners_Block": (3, 15),     # odd
+    "Corners_Thresh_x100": (0, 100),  # % от max
+    "Corners_NMS": (1, 15),       # odd
+    "Corners_Overlay": (0, 1),
 }
 
 # Названия окон

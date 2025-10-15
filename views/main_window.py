@@ -118,6 +118,18 @@ class MainWindow:
             "conv_kernel_size": tk.IntVar(value=3),
             "conv_kernel_text": tk.StringVar(value=""),
             "conv_preset": tk.StringVar(value="Пользовательская"),
+            # Edges
+            "edges_enable": tk.BooleanVar(value=False),
+            "edges_method": tk.IntVar(value=0),
+            "edges_thresh": tk.IntVar(value=100),
+            "edges_overlay": tk.BooleanVar(value=True),
+            # Corners
+            "corners_enable": tk.BooleanVar(value=False),
+            "corners_k_x1000": tk.IntVar(value=4),
+            "corners_block": tk.IntVar(value=5),
+            "corners_thresh_x100": tk.IntVar(value=10),
+            "corners_nms": tk.IntVar(value=3),
+            "corners_overlay": tk.BooleanVar(value=True),
         }
         
         # Позиция мыши
@@ -166,8 +178,12 @@ class MainWindow:
     
     def _create_left_panel(self, parent):
         """Создает левую панель с параметрами."""
-        left_frame = ttk.LabelFrame(parent, text="Параметры обработки", padding=10)
-        left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+        # Делаем левую панель прокручиваемой
+        left_scroll = ScrollableFrame(parent)
+        left_scroll.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+        left_content = left_scroll.get_scrollable_frame()
+        left_frame = ttk.LabelFrame(left_content, text="Параметры обработки", padding=10)
+        left_frame.pack(fill=tk.BOTH, expand=True)
         
         # Яркость
         ttk.Label(left_frame, text="Яркость:").pack(anchor=tk.W)
@@ -361,6 +377,85 @@ class MainWindow:
             self._on_parameter_change()
 
         self.conv_kernel_text_widget.bind("<KeyRelease>", _on_conv_text_change)
+
+        # Границы (Edges)
+        edges_frame = ttk.LabelFrame(left_frame, text="Выделение границ", padding=8)
+        edges_frame.pack(fill=tk.X, pady=(0, 10))
+
+        edges_enable = ttk.Checkbutton(
+            edges_frame, text="Включить границы", variable=self.params["edges_enable"],
+            command=self._on_parameter_change
+        )
+        edges_enable.pack(anchor=tk.W)
+
+        ttk.Label(edges_frame, text="Метод:").pack(anchor=tk.W)
+        edges_method_combo = ttk.Combobox(
+            edges_frame, state="readonly", width=14,
+            values=["Sobel", "Prewitt"],
+        )
+        edges_method_combo.current(self.params["edges_method"].get())
+        def _on_edges_method_change(event=None):
+            self.params["edges_method"].set(edges_method_combo.current())
+            self._on_parameter_change()
+        edges_method_combo.bind("<<ComboboxSelected>>", _on_edges_method_change)
+        edges_method_combo.pack(fill=tk.X, pady=(0, 6))
+
+        ttk.Label(edges_frame, text="Порог градиента:").pack(anchor=tk.W)
+        edges_thresh_scale = ttk.Scale(
+            edges_frame, from_=0, to=255, orient=tk.HORIZONTAL,
+            variable=self.params["edges_thresh"], command=self._on_parameter_change
+        )
+        edges_thresh_scale.pack(fill=tk.X, pady=(0, 6))
+
+        edges_overlay_check = ttk.Checkbutton(
+            edges_frame, text="Наложение на изображение", variable=self.params["edges_overlay"],
+            command=self._on_parameter_change
+        )
+        edges_overlay_check.pack(anchor=tk.W)
+
+        # Углы (Corners)
+        corners_frame = ttk.LabelFrame(left_frame, text="Выделение углов (Harris)", padding=8)
+        corners_frame.pack(fill=tk.X, pady=(0, 10))
+
+        corners_enable = ttk.Checkbutton(
+            corners_frame, text="Включить углы", variable=self.params["corners_enable"],
+            command=self._on_parameter_change
+        )
+        corners_enable.pack(anchor=tk.W)
+
+        ttk.Label(corners_frame, text="k ×1000:").pack(anchor=tk.W)
+        corners_k_scale = ttk.Scale(
+            corners_frame, from_=1, to=100, orient=tk.HORIZONTAL,
+            variable=self.params["corners_k_x1000"], command=self._on_parameter_change
+        )
+        corners_k_scale.pack(fill=tk.X, pady=(0, 6))
+
+        ttk.Label(corners_frame, text="Окно усреднения (нечётн.):").pack(anchor=tk.W)
+        corners_block_scale = ttk.Scale(
+            corners_frame, from_=3, to=15, orient=tk.HORIZONTAL,
+            variable=self.params["corners_block"], command=self._on_parameter_change
+        )
+        corners_block_scale.pack(fill=tk.X, pady=(0, 6))
+
+        ttk.Label(corners_frame, text="Порог (% от max):").pack(anchor=tk.W)
+        corners_thr_scale = ttk.Scale(
+            corners_frame, from_=0, to=100, orient=tk.HORIZONTAL,
+            variable=self.params["corners_thresh_x100"], command=self._on_parameter_change
+        )
+        corners_thr_scale.pack(fill=tk.X, pady=(0, 6))
+
+        ttk.Label(corners_frame, text="NMS окно (нечётн.):").pack(anchor=tk.W)
+        corners_nms_scale = ttk.Scale(
+            corners_frame, from_=1, to=15, orient=tk.HORIZONTAL,
+            variable=self.params["corners_nms"], command=self._on_parameter_change
+        )
+        corners_nms_scale.pack(fill=tk.X, pady=(0, 6))
+
+        corners_overlay_check = ttk.Checkbutton(
+            corners_frame, text="Наложение на изображение", variable=self.params["corners_overlay"],
+            command=self._on_parameter_change
+        )
+        corners_overlay_check.pack(anchor=tk.W)
         
         # Режим каналов
         ttk.Label(left_frame, text="Режим просмотра:").pack(anchor=tk.W)

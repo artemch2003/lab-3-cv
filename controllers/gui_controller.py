@@ -112,6 +112,20 @@ class GUIController:
         self.processor.set_parameter("conv_kernel_size", max(1, min(25, conv_k_raw)))
         self.processor.set_parameter("conv_kernel_text", ui_params.get("conv_kernel_text", ""))
         self.processor.set_parameter("conv_preset", ui_params.get("conv_preset", "Пользовательская"))
+
+        # Edges параметры
+        self.processor.set_parameter("edges_enable", ui_params.get("edges_enable", False))
+        self.processor.set_parameter("edges_method", int(ui_params.get("edges_method", 0)))
+        self.processor.set_parameter("edges_thresh", int(ui_params.get("edges_thresh", 100)))
+        self.processor.set_parameter("edges_overlay", ui_params.get("edges_overlay", True))
+
+        # Corners параметры (Harris)
+        self.processor.set_parameter("corners_enable", ui_params.get("corners_enable", False))
+        self.processor.set_parameter("corners_k_x1000", int(ui_params.get("corners_k_x1000", 4)))
+        self.processor.set_parameter("corners_block", int(ui_params.get("corners_block", 5)))
+        self.processor.set_parameter("corners_thresh_x100", int(ui_params.get("corners_thresh_x100", 10)))
+        self.processor.set_parameter("corners_nms", int(ui_params.get("corners_nms", 3)))
+        self.processor.set_parameter("corners_overlay", ui_params.get("corners_overlay", True))
         
         # Обрабатываем изображение
         processed_image = self.processor.process_image()

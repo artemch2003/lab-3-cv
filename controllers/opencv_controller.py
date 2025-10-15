@@ -81,6 +81,18 @@ class OpenCVController:
             ("HP_Mode", int(self.processor.get_parameter("hp_blur_mode")), TRACKBAR_RANGES["HP_Mode"][1]),
             ("HP_Kernel", int(self.processor.get_parameter("hp_kernel")), TRACKBAR_RANGES["HP_Kernel"][1]),
             ("HP_Scale_x100", int(self.processor.get_parameter("hp_scale_x100")), TRACKBAR_RANGES["HP_Scale_x100"][1]),
+            # Edges
+            ("Edges_Enable", int(self.processor.get_parameter("edges_enable")), TRACKBAR_RANGES["Edges_Enable"][1]),
+            ("Edges_Method", int(self.processor.get_parameter("edges_method")), TRACKBAR_RANGES["Edges_Method"][1]),
+            ("Edges_Thresh", int(self.processor.get_parameter("edges_thresh")), TRACKBAR_RANGES["Edges_Thresh"][1]),
+            ("Edges_Overlay", int(self.processor.get_parameter("edges_overlay")), TRACKBAR_RANGES["Edges_Overlay"][1]),
+            # Corners
+            ("Corners_Enable", int(self.processor.get_parameter("corners_enable")), TRACKBAR_RANGES["Corners_Enable"][1]),
+            ("Corners_K_x1000", int(self.processor.get_parameter("corners_k_x1000")), TRACKBAR_RANGES["Corners_K_x1000"][1]),
+            ("Corners_Block", int(self.processor.get_parameter("corners_block")), TRACKBAR_RANGES["Corners_Block"][1]),
+            ("Corners_Thresh_x100", int(self.processor.get_parameter("corners_thresh_x100")), TRACKBAR_RANGES["Corners_Thresh_x100"][1]),
+            ("Corners_NMS", int(self.processor.get_parameter("corners_nms")), TRACKBAR_RANGES["Corners_NMS"][1]),
+            ("Corners_Overlay", int(self.processor.get_parameter("corners_overlay")), TRACKBAR_RANGES["Corners_Overlay"][1]),
         ]
         
         for name, initial_value, max_value in trackbar_configs:
@@ -113,6 +125,27 @@ class OpenCVController:
             hp_kernel_raw = max(3, hp_kernel_raw - 1)
         self.processor.set_parameter("hp_kernel", max(3, min(25, hp_kernel_raw)))
         self.processor.set_parameter("hp_scale_x100", cv2.getTrackbarPos("HP_Scale_x100", controls_window))
+
+        # Edges
+        self.processor.set_parameter("edges_enable", cv2.getTrackbarPos("Edges_Enable", controls_window) > 0)
+        self.processor.set_parameter("edges_method", cv2.getTrackbarPos("Edges_Method", controls_window))
+        self.processor.set_parameter("edges_thresh", cv2.getTrackbarPos("Edges_Thresh", controls_window))
+        self.processor.set_parameter("edges_overlay", cv2.getTrackbarPos("Edges_Overlay", controls_window) > 0)
+
+        # Corners
+        self.processor.set_parameter("corners_enable", cv2.getTrackbarPos("Corners_Enable", controls_window) > 0)
+        self.processor.set_parameter("corners_k_x1000", cv2.getTrackbarPos("Corners_K_x1000", controls_window))
+        # Приведение к нечётному
+        block_raw = cv2.getTrackbarPos("Corners_Block", controls_window)
+        if block_raw % 2 == 0:
+            block_raw = max(1, block_raw - 1)
+        self.processor.set_parameter("corners_block", max(1, min(15, block_raw)))
+        self.processor.set_parameter("corners_thresh_x100", cv2.getTrackbarPos("Corners_Thresh_x100", controls_window))
+        nms_raw = cv2.getTrackbarPos("Corners_NMS", controls_window)
+        if nms_raw % 2 == 0:
+            nms_raw = max(1, nms_raw - 1)
+        self.processor.set_parameter("corners_nms", max(1, min(15, nms_raw)))
+        self.processor.set_parameter("corners_overlay", cv2.getTrackbarPos("Corners_Overlay", controls_window) > 0)
     
     def handle_keyboard_input(self, key: int) -> None:
         """

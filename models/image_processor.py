@@ -49,6 +49,18 @@ class ImageProcessor:
             "conv_kernel_size": 3,          # n (нечётное)
             "conv_kernel_text": "",        # текст ядра n×n через пробел/запятую/перевод строки
             "conv_preset": "Пользовательская",  # название пресета
+            # Границы (Edges)
+            "edges_enable": False,
+            "edges_method": 0,          # 0=Sobel, 1=Prewitt
+            "edges_thresh": 100,        # 0..255 порог по модулю градиента
+            "edges_overlay": True,      # накладывать на изображение
+            # Углы (Harris)
+            "corners_enable": False,
+            "corners_k_x1000": 4,       # k*1000 (по умолчанию 0.004)
+            "corners_block": 5,         # размер окна усреднения (нечётный)
+            "corners_thresh_x100": 10,  # 0..100 (% от max R)
+            "corners_nms": 3,           # окно NMS (нечётный)
+            "corners_overlay": True,    # рисовать поверх изображения
         }
     
     def load_image(self, path: str) -> bool:
@@ -176,7 +188,33 @@ class ImageProcessor:
                     normalize=bool(self.params.get("conv_normalize", True)),
                     add128=bool(self.params.get("conv_add128", False)),
                 )
-        
+        # 8) Выделение границ (опционально)
+        if bool(self.params.get("edges_enable", False)):
+            gray = self.to_gray_manual(processed)
+            edges_mask = self._edges_detect(gray,
+                                            method=int(self.params.get("edges_method", 0)),
+                                            thresh=int(self.params.get("edges_thresh", 100)))
+            if bool(self.params.get("edges_overlay", True)):
+                # Накладываем границы цветом (циан)
+                processed = self._overlay_mask_color(processed, edges_mask, color=(255, 255, 0))
+            else:
+                # Выводим карту границ как 3-канальное
+                processed = cv2.cvtColor(edges_mask.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
+
+        # 9) Выделение углов (опционально)
+        if bool(self.params.get("corners_enable", False)):
+            gray = self.to_gray_manual(processed)
+            corners_mask = self._harris_corners(gray,
+                                                k=float(self.params.get("corners_k_x1000", 4)) / 1000.0,
+                                                block_size=int(self.params.get("corners_block", 5)),
+                                                thresh_ratio=float(self.params.get("corners_thresh_x100", 10)) / 100.0,
+                                                nms_size=int(self.params.get("corners_nms", 3)))
+            if bool(self.params.get("corners_overlay", True)):
+                # Рисуем углы красным цветом
+                processed = self._overlay_points(processed, corners_mask, color=(0, 0, 255))
+            else:
+                processed = cv2.cvtColor((corners_mask > 0).astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
+
         self.processed_image = processed
         self.params_dirty = False
         return processed
@@ -559,3 +597,102 @@ class ImageProcessor:
         if add128:
             result = result + 128.0
         return result.astype(np.float32)
+
+    # ---- Выделение границ ----
+    def _edges_detect(self, gray_u8: np.ndarray, method: int, thresh: int) -> np.ndarray:
+        """Возвращает бинарную маску границ для серого изображения.
+
+        method: 0=Sobel, 1=Prewitt
+        thresh: порог на |grad| (0..255)
+        """
+        gray = gray_u8.astype(np.float32)
+        if method == 1:
+            # Prewitt
+            kx = np.array([[-1, 0, 1], [-1, 0, 1], [-1, 0, 1]], dtype=np.float32)
+            ky = np.array([[-1, -1, -1], [0, 0, 0], [1, 1, 1]], dtype=np.float32)
+        else:
+            # Sobel
+            kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float32)
+            ky = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=np.float32)
+
+        gx = self._convolve_channel(gray, kx, add128=False)
+        gy = self._convolve_channel(gray, ky, add128=False)
+        mag = np.sqrt(gx * gx + gy * gy)
+        mag = np.clip(mag, 0.0, 255.0)
+        mask = (mag >= float(thresh))
+        return mask.astype(np.uint8)
+
+    def _overlay_mask_color(self, bgr: np.ndarray, mask_u8: np.ndarray, color: tuple[int, int, int]) -> np.ndarray:
+        """Накладывает бинарную маску на изображение указанным цветом."""
+        result = bgr.copy()
+        yx = np.where(mask_u8 > 0)
+        if len(yx[0]) > 0:
+            # color: (B, G, R)
+            result[yx[0], yx[1], :] = color
+        return result
+
+    # ---- Выделение углов (Harris) ----
+    def _harris_corners(self, gray_u8: np.ndarray, k: float, block_size: int, thresh_ratio: float, nms_size: int) -> np.ndarray:
+        """Возвращает бинарную маску углов по методу Харриса (без OpenCV cornerHarris)."""
+        gray = gray_u8.astype(np.float32)
+        # Градиенты через Sobel
+        kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float32)
+        ky = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=np.float32)
+        ix = self._convolve_channel(gray, kx, add128=False)
+        iy = self._convolve_channel(gray, ky, add128=False)
+
+        ix2 = ix * ix
+        iy2 = iy * iy
+        ixy = ix * iy
+
+        # Усреднение в окне block_size (box blur)
+        bs = max(1, int(block_size))
+        if bs % 2 == 0:
+            bs += 1
+        area = float(bs * bs)
+        sxx = self._box_blur_channel(ix2, bs, area)
+        syy = self._box_blur_channel(iy2, bs, area)
+        sxy = self._box_blur_channel(ixy, bs, area)
+
+        # Отклик Харриса
+        det = sxx * syy - sxy * sxy
+        trace = sxx + syy
+        r = det - k * (trace * trace)
+
+        r_max = float(np.max(r)) if r.size > 0 else 0.0
+        if r_max <= 0.0:
+            return np.zeros_like(gray_u8, dtype=np.uint8)
+        thr = r_max * max(0.0, float(thresh_ratio))
+        cand = (r >= thr)
+
+        # NMS (не максимум подавляем) через сравнение с локальным максимумом
+        nms = max(1, int(nms_size))
+        if nms % 2 == 0:
+            nms += 1
+        pad = nms // 2
+        padded = np.pad(r, ((pad, pad), (pad, pad)), mode='constant', constant_values=-np.inf)
+        h, w = r.shape
+        # Окна через as_strided
+        shape = (h, w, nms, nms)
+        strides = (padded.strides[0], padded.strides[1], padded.strides[0], padded.strides[1])
+        windows = np.lib.stride_tricks.as_strided(padded, shape=shape, strides=strides, writeable=False)
+        local_max = windows.max(axis=(2, 3))
+        is_max = (r == local_max)
+        corners = (cand & is_max)
+        return corners.astype(np.uint8)
+
+    def _overlay_points(self, bgr: np.ndarray, points_mask_u8: np.ndarray, color: tuple[int, int, int]) -> np.ndarray:
+        """Рисует маленькие крестики в местах, где points_mask_u8 > 0."""
+        result = bgr.copy()
+        ys, xs = np.where(points_mask_u8 > 0)
+        h, w = result.shape[:2]
+        for y, x in zip(ys, xs):
+            # горизонтальная линия
+            x0 = max(0, x - 2)
+            x1 = min(w - 1, x + 2)
+            result[y, x0:x1 + 1] = color
+            # вертикальная линия
+            y0 = max(0, y - 2)
+            y1 = min(h - 1, y + 2)
+            result[y0:y1 + 1, x] = color
+        return result
