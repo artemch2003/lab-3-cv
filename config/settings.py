@@ -42,6 +42,11 @@ TRACKBAR_RANGES = {
     "NegR": (0, 1),
     "NegG": (0, 1),
     "NegB": (0, 1),
+    # High-pass (для OpenCV трекбаров)
+    "HP_Enable": (0, 1),
+    "HP_Mode": (0, 1),        # 0=mean, 1=gaussian
+    "HP_Kernel": (3, 25),     # будем приводить к нечетному
+    "HP_Scale_x100": (0, 300),
 }
 
 # Названия окон

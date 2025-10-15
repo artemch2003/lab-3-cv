@@ -106,6 +106,11 @@ class MainWindow:
             "negate_b": tk.BooleanVar(value=False),
             "flip_horizontal": tk.BooleanVar(value=False),
             "flip_vertical": tk.BooleanVar(value=False),
+            # High-pass
+            "hp_enable": tk.BooleanVar(value=False),
+            "hp_blur_mode": tk.IntVar(value=0),  # 0 mean, 1 gaussian
+            "hp_kernel": tk.IntVar(value=3),
+            "hp_scale_x100": tk.IntVar(value=100),
         }
         
         # Позиция мыши
@@ -250,6 +255,43 @@ class MainWindow:
             command=self._on_parameter_change
         )
         flip_v_check.pack(anchor=tk.W, pady=(0, 10))
+
+        # High-pass блок
+        hp_frame = ttk.LabelFrame(left_frame, text="High-pass фильтр", padding=8)
+        hp_frame.pack(fill=tk.X, pady=(0, 10))
+
+        hp_enable_check = ttk.Checkbutton(
+            hp_frame, text="Включить High-pass", variable=self.params["hp_enable"],
+            command=self._on_parameter_change
+        )
+        hp_enable_check.pack(anchor=tk.W)
+
+        ttk.Label(hp_frame, text="Тип размытия:").pack(anchor=tk.W)
+        hp_mode_combo = ttk.Combobox(
+            hp_frame, state="readonly", width=14,
+            values=["Усреднение", "Гаусс"],
+        )
+        # Привязка комбобокса к IntVar через manual sync
+        hp_mode_combo.current(self.params["hp_blur_mode"].get())
+        def _on_hp_mode_change(event=None):
+            self.params["hp_blur_mode"].set(hp_mode_combo.current())
+            self._on_parameter_change()
+        hp_mode_combo.bind("<<ComboboxSelected>>", _on_hp_mode_change)
+        hp_mode_combo.pack(fill=tk.X, pady=(0, 6))
+
+        ttk.Label(hp_frame, text="Размер ядра (нечетн.):").pack(anchor=tk.W)
+        hp_kernel_scale = ttk.Scale(
+            hp_frame, from_=3, to=25, orient=tk.HORIZONTAL,
+            variable=self.params["hp_kernel"], command=self._on_parameter_change
+        )
+        hp_kernel_scale.pack(fill=tk.X, pady=(0, 6))
+
+        ttk.Label(hp_frame, text="Коэфф. c (x100):").pack(anchor=tk.W)
+        hp_scale = ttk.Scale(
+            hp_frame, from_=0, to=300, orient=tk.HORIZONTAL,
+            variable=self.params["hp_scale_x100"], command=self._on_parameter_change
+        )
+        hp_scale.pack(fill=tk.X)
         
         # Режим каналов
         ttk.Label(left_frame, text="Режим просмотра:").pack(anchor=tk.W)
@@ -460,6 +502,11 @@ class MainWindow:
         self.params["negate_b"].set(False)
         self.params["flip_horizontal"].set(False)
         self.params["flip_vertical"].set(False)
+        # High-pass
+        self.params["hp_enable"].set(False)
+        self.params["hp_blur_mode"].set(0)
+        self.params["hp_kernel"].set(3)
+        self.params["hp_scale_x100"].set(100)
         
         if self.update_callback:
             self.update_callback()

@@ -76,6 +76,11 @@ class OpenCVController:
             ("NegR", int(self.processor.get_parameter("negate_r")), TRACKBAR_RANGES["NegR"][1]),
             ("NegG", int(self.processor.get_parameter("negate_g")), TRACKBAR_RANGES["NegG"][1]),
             ("NegB", int(self.processor.get_parameter("negate_b")), TRACKBAR_RANGES["NegB"][1]),
+            # High-pass
+            ("HP_Enable", int(self.processor.get_parameter("hp_enable")), TRACKBAR_RANGES["HP_Enable"][1]),
+            ("HP_Mode", int(self.processor.get_parameter("hp_blur_mode")), TRACKBAR_RANGES["HP_Mode"][1]),
+            ("HP_Kernel", int(self.processor.get_parameter("hp_kernel")), TRACKBAR_RANGES["HP_Kernel"][1]),
+            ("HP_Scale_x100", int(self.processor.get_parameter("hp_scale_x100")), TRACKBAR_RANGES["HP_Scale_x100"][1]),
         ]
         
         for name, initial_value, max_value in trackbar_configs:
@@ -99,6 +104,15 @@ class OpenCVController:
         self.processor.set_parameter("negate_r", cv2.getTrackbarPos("NegR", controls_window) > 0)
         self.processor.set_parameter("negate_g", cv2.getTrackbarPos("NegG", controls_window) > 0)
         self.processor.set_parameter("negate_b", cv2.getTrackbarPos("NegB", controls_window) > 0)
+        # High-pass
+        self.processor.set_parameter("hp_enable", cv2.getTrackbarPos("HP_Enable", controls_window) > 0)
+        self.processor.set_parameter("hp_blur_mode", cv2.getTrackbarPos("HP_Mode", controls_window))
+        # Приводим ядро к нечетному значению
+        hp_kernel_raw = cv2.getTrackbarPos("HP_Kernel", controls_window)
+        if hp_kernel_raw % 2 == 0:
+            hp_kernel_raw = max(3, hp_kernel_raw - 1)
+        self.processor.set_parameter("hp_kernel", max(3, min(25, hp_kernel_raw)))
+        self.processor.set_parameter("hp_scale_x100", cv2.getTrackbarPos("HP_Scale_x100", controls_window))
     
     def handle_keyboard_input(self, key: int) -> None:
         """

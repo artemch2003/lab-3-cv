@@ -37,6 +37,11 @@ class ImageProcessor:
             "negate_b": False,
             "flip_horizontal": False,
             "flip_vertical": False,
+            # High-pass параметры
+            "hp_enable": False,     # включение высокочастотного режима
+            "hp_blur_mode": 0,      # 0=mean, 1=gaussian
+            "hp_kernel": 3,         # нечетный размер ядра (3..25)
+            "hp_scale_x100": 100,   # c в формуле, х100 (0..300)
         }
     
     def load_image(self, path: str) -> bool:
@@ -140,6 +145,15 @@ class ImageProcessor:
         processed = self._flip_image(
             processed, self.params["flip_horizontal"], self.params["flip_vertical"]
         )
+
+        # 6) High-pass фильтр (опционально)
+        if self.params.get("hp_enable", False):
+            processed = self._apply_high_pass(
+                processed,
+                blur_mode=int(self.params.get("hp_blur_mode", 0)),
+                kernel_size=int(self.params.get("hp_kernel", 3)),
+                scale=float(self.params.get("hp_scale_x100", 100)) / 100.0,
+            )
         
         self.processed_image = processed
         self.params_dirty = False
@@ -315,3 +329,107 @@ class ImageProcessor:
             result = cv2.flip(result, 0)
         
         return result
+
+    def _apply_high_pass(self, bgr: np.ndarray, blur_mode: int, kernel_size: int, scale: float) -> np.ndarray:
+        """Применяет высокочастотный фильтр: HP = SRC - BLUR * c.
+
+        Размытие реализовано вручную: усреднение или гауссово сверткой без сторонних библиотек.
+        """
+        # Приводим к допустимым значениям
+        kernel_size = max(1, int(kernel_size))
+        if kernel_size % 2 == 0:
+            kernel_size += 1
+        kernel_size = min(kernel_size, 25)
+        scale = float(scale)
+
+        src = bgr.astype(np.float32)
+        if blur_mode == 1:
+            blurred = self._gaussian_blur_manual(src, kernel_size)
+        else:
+            blurred = self._mean_blur_manual(src, kernel_size)
+
+        high_pass = src - blurred * scale
+        high_pass = np.clip(high_pass, MIN_PIXEL_VALUE, MAX_PIXEL_VALUE)
+        return high_pass.astype(np.uint8)
+
+    def _mean_blur_manual(self, img_f32: np.ndarray, k: int) -> np.ndarray:
+        """Ручное усредняющее размытие сверткой с ядром из единиц / (k*k)."""
+        kernel_area = float(k * k)
+        # Разбиваем на каналы для ускорения
+        channels = cv2.split(img_f32)
+        blurred_channels = [self._box_blur_channel(ch, k, kernel_area) for ch in channels]
+        return cv2.merge(blurred_channels)
+
+    def _box_blur_channel(self, ch: np.ndarray, k: int, kernel_area: float) -> np.ndarray:
+        pad = k // 2
+        # Паддинг отражением, чтобы не терять края
+        padded = np.pad(ch, ((pad, pad), (pad, pad)), mode='reflect')
+        h, w = ch.shape
+        out = np.empty_like(ch)
+
+        # Интегральное изображение для O(1) усреднения окна
+        integral = padded.cumsum(axis=0).cumsum(axis=1)
+        # вспомогательная функция суммы по окну через интегральное изображение
+        def rect_sum(ii: np.ndarray, y0: int, x0: int, y1: int, x1: int) -> float:
+            total = ii[y1, x1]
+            if y0 > 0:
+                total -= ii[y0 - 1, x1]
+            if x0 > 0:
+                total -= ii[y1, x0 - 1]
+            if y0 > 0 and x0 > 0:
+                total += ii[y0 - 1, x0 - 1]
+            return float(total)
+
+        for y in range(h):
+            y0 = y
+            y1 = y + k - 1
+            for x in range(w):
+                x0 = x
+                x1 = x + k - 1
+                s = rect_sum(integral, y0, x0, y1, x1)
+                out[y, x] = s / kernel_area
+        return out
+
+    def _gaussian_blur_manual(self, img_f32: np.ndarray, k: int) -> np.ndarray:
+        """Ручное гауссово размытие: separable 1D ядро, sigma ~ k/6."""
+        sigma = max(0.1, k / 6.0)
+        kernel_1d = self._gaussian_kernel_1d(k, sigma)
+        # Разделим по каналам
+        channels = cv2.split(img_f32)
+        blurred_channels = []
+        for ch in channels:
+            tmp = self._convolve_1d(ch, kernel_1d, axis=1)
+            res = self._convolve_1d(tmp, kernel_1d, axis=0)
+            blurred_channels.append(res)
+        return cv2.merge(blurred_channels)
+
+    def _gaussian_kernel_1d(self, k: int, sigma: float) -> np.ndarray:
+        radius = k // 2
+        x = np.arange(-radius, radius + 1, dtype=np.float32)
+        kernel = np.exp(-(x * x) / (2.0 * sigma * sigma))
+        kernel /= np.sum(kernel)
+        return kernel.astype(np.float32)
+
+    def _convolve_1d(self, ch: np.ndarray, kernel: np.ndarray, axis: int) -> np.ndarray:
+        pad = len(kernel) // 2
+        if axis == 1:  # по x (строчно)
+            padded = np.pad(ch, ((0, 0), (pad, pad)), mode='reflect')
+            h, w = ch.shape
+            out = np.empty_like(ch)
+            for y in range(h):
+                row = padded[y]
+                # свертка строки
+                for x in range(w):
+                    window = row[x:x + 2 * pad + 1]
+                    out[y, x] = float(np.dot(window, kernel))
+            return out
+        else:  # по y (столбцово)
+            padded = np.pad(ch, ((pad, pad), (0, 0)), mode='reflect')
+            h, w = ch.shape
+            out = np.empty_like(ch)
+            for x in range(w):
+                col = padded[:, x]
+                for y in range(h):
+                    window = col[y:y + 2 * pad + 1]
+                    out[y, x] = float(np.dot(window, kernel))
+            return out

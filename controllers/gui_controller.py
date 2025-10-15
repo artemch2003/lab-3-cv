@@ -96,6 +96,11 @@ class GUIController:
         self.processor.set_parameter("negate_b", ui_params["negate_b"])
         self.processor.set_parameter("flip_horizontal", ui_params["flip_horizontal"])
         self.processor.set_parameter("flip_vertical", ui_params["flip_vertical"])
+        # High-pass параметры из UI
+        self.processor.set_parameter("hp_enable", ui_params.get("hp_enable", False))
+        self.processor.set_parameter("hp_blur_mode", ui_params.get("hp_blur_mode", 0))
+        self.processor.set_parameter("hp_kernel", int(ui_params.get("hp_kernel", 3)))
+        self.processor.set_parameter("hp_scale_x100", int(ui_params.get("hp_scale_x100", 100)))
         
         # Обрабатываем изображение
         processed_image = self.processor.process_image()
